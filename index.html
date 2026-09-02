@@ -150,24 +150,28 @@
 
 <script>
     // --- CONFIGURACIÓN ---
-    // ¡REEMPLAZA ESTA URL POR LA QUE TE DIO GOOGLE APPS SCRIPT!
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyVhuG0BR6pR3d3OlQS-C8S7nhOH3kbjIVCZTMrt4hz80ymCMDQy3oWn8r6ZJGKzZhWLQ/exec'; 
     // ---------------------
 
     const categoriasGastos = ["Pasaje", "Alimentación", "Servicios de casa", "Servicios personales", "Compras personales", "Salidas con amigos", "Salidas íntimas", "Pago de universidad", "Gastos extraordinarios"];
     const categoriasIngresos = ["Ingreso de dinero"];
-    let tipoCambioActual = 3.75; // Valor por defecto en caso falle la API
+    
+    // Valores de SUNAT por defecto en caso de caída temporal
+    let tcCompra = 3.360; 
+    let tcVenta = 3.368;
 
-    // Establecer fecha actual por defecto
     document.getElementById('fecha').valueAsDate = new Date();
 
-    // Obtener tipo de cambio real de USD a PEN
-    fetch('https://api.exchangerate-api.com/v4/latest/USD')
+    // Conexión en tiempo real a la API de SUNAT para la vista previa
+    fetch('https://api.apis.net.pe/v1/tipo-cambio-sunat')
         .then(res => res.json())
-        .then(data => { tipoCambioActual = data.rates.PEN; })
-        .catch(err => console.log("Usando tipo de cambio por defecto"));
+        .then(data => { 
+            tcCompra = parseFloat(data.compra); 
+            tcVenta = parseFloat(data.venta); 
+        })
+        .catch(err => console.log("Usando T.C. referencial por falla de conexión"));
 
-    // Lógica para mostrar/ocultar y llenar Categorías
+    // Lógica para mostrar/ocultar Categorías
     document.getElementById('tipo').addEventListener('change', function() {
         const catSelect = document.getElementById('categoria');
         const groupCat = document.getElementById('groupCategoria');
@@ -183,9 +187,9 @@
             groupCat.classList.add('hidden');
             catSelect.removeAttribute('required');
         }
+        actualizarConversion(); // Actualiza el T.C. si cambias de Ingreso a Gasto
     });
 
-    // Lógica para mostrar/ocultar Bancos
     document.getElementById('metodo').addEventListener('change', function() {
         const groupBanco = document.getElementById('groupBanco');
         const bancoSelect = document.getElementById('banco');
@@ -199,15 +203,17 @@
         }
     });
 
-    // Lógica para calcular la conversión a Soles en vivo
+    // Calcula la conversión exacta en pantalla usando Compra o Venta
     function actualizarConversion() {
         const moneda = document.getElementById('moneda').value;
+        const tipo = document.getElementById('tipo').value;
         const monto = parseFloat(document.getElementById('monto').value);
         const box = document.getElementById('conversionBox');
         
         if (moneda === 'USD' && monto > 0 && !isNaN(monto)) {
-            const soles = (monto * tipoCambioActual).toFixed(2);
-            box.innerText = `Equivale a aprox. S/ ${soles}`;
+            const tcUsado = (tipo === 'Ingreso') ? tcCompra : tcVenta;
+            const soles = (monto * tcUsado).toFixed(2);
+            box.innerText = `Equivale a S/ ${soles} (T.C. SUNAT: ${tcUsado})`;
             box.classList.remove('hidden');
         } else {
             box.classList.add('hidden');
@@ -217,7 +223,6 @@
     document.getElementById('moneda').addEventListener('change', actualizarConversion);
     document.getElementById('monto').addEventListener('input', actualizarConversion);
 
-    // Lógica para Enviar el formulario a Google Sheets
     document.getElementById('finanzasForm').addEventListener('submit', function(e) {
         e.preventDefault();
         
@@ -237,7 +242,6 @@
             observacion: document.getElementById('observacion').value
         };
 
-        // Enviar datos usando modo 'no-cors' para evitar bloqueos del navegador
         fetch(SCRIPT_URL, {
             method: 'POST',
             mode: 'no-cors',
@@ -245,7 +249,6 @@
             body: JSON.stringify(payload)
         })
         .then(() => {
-            // El formulario se resetea automáticamente a la pantalla inicial
             document.getElementById('finanzasForm').reset();
             document.getElementById('fecha').valueAsDate = new Date();
             document.getElementById('groupCategoria').classList.add('hidden');
