@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Finanzas</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --bg: #F3F4F6;
+            --surface: #FFFFFF;
+            --text: #1F2937;
+            --border: #D1D5DB;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            padding: 20px;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background-color: var(--surface);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 400px;
+        }
+        h2 { text-align: center; margin-top: 0; color: var(--primary); }
+        p.desc { text-align: center; font-size: 0.9em; color: #6B7280; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.9em; }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1em;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        .hidden { display: none; }
+        .conversion-box {
+            background-color: #EEF2FF;
+            color: #4338CA;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            margin-top: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background-color 0.2s;
+        }
+        button:hover { background-color: #4338CA; }
+        button:disabled { background-color: #9CA3AF; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Mi Billetera</h2>
+    <p class="desc">Registra tus movimientos financieros al instante.</p>
+
+    <form id="finanzasForm">
+        <div class="form-group">
+            <label>Fecha de operación</label>
+            <input type="date" id="fecha" required>
+        </div>
+
+        <div class="form-group">
+            <label>Tipo de operación</label>
+            <select id="tipo" required>
+                <option value="">Selecciona...</option>
+                <option value="Ingreso">Ingreso</option>
+                <option value="Gasto">Gasto</option>
+            </select>
+        </div>
+
+        <div class="form-group hidden" id="groupCategoria">
+            <label>Categoría</label>
+            <select id="categoria" required></select>
+        </div>
+
+        <div class="form-group">
+            <label>Descripción corta</label>
+            <input type="text" id="descripcion" placeholder="Ej. Almuerzo de trabajo" required>
+        </div>
+
+        <div class="form-group">
+            <label>Moneda</label>
+            <select id="moneda" required>
+                <option value="SOLES">Soles (PEN)</option>
+                <option value="USD">Dólares (USD)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Monto</label>
+            <input type="number" id="monto" step="0.01" min="0" placeholder="0.00" required>
+            <div id="conversionBox" class="conversion-box hidden">Cargando tipo de cambio...</div>
+        </div>
+
+        <div class="form-group">
+            <label>Método de pago</label>
+            <select id="metodo" required>
+                <option value="">Selecciona...</option>
+                <option value="Yape">Yape</option>
+                <option value="Plin">Plin</option>
+                <option value="Tarjeta de crédito">Tarjeta de crédito</option>
+                <option value="Tarjeta de débito">Tarjeta de débito</option>
+            </select>
+        </div>
+
+        <div class="form-group hidden" id="groupBanco">
+            <label>Banco</label>
+            <select id="banco">
+                <option value="">Selecciona...</option>
+                <option value="BCP">BCP</option>
+                <option value="Scotiabank">Scotiabank</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Observación (Opcional)</label>
+            <textarea id="observacion" rows="2" placeholder="Detalles adicionales..."></textarea>
+        </div>
+
+        <button type="submit" id="btnSubmit">Registrar Operación</button>
+    </form>
+</div>
+
+<script>
+    // --- CONFIGURACIÓN ---
+    // ¡REEMPLAZA ESTA URL POR LA QUE TE DIO GOOGLE APPS SCRIPT!
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyVhuG0BR6pR3d3OlQS-C8S7nhOH3kbjIVCZTMrt4hz80ymCMDQy3oWn8r6ZJGKzZhWLQ/exec'; 
+    // ---------------------
+
+    const categoriasGastos = ["Pasaje", "Alimentación", "Servicios de casa", "Servicios personales", "Compras personales", "Salidas con amigos", "Salidas íntimas", "Pago de universidad", "Gastos extraordinarios"];
+    const categoriasIngresos = ["Ingreso de dinero"];
+    let tipoCambioActual = 3.75; // Valor por defecto en caso falle la API
+
+    // Establecer fecha actual por defecto
+    document.getElementById('fecha').valueAsDate = new Date();
+
+    // Obtener tipo de cambio real de USD a PEN
+    fetch('https://api.exchangerate-api.com/v4/latest/USD')
+        .then(res => res.json())
+        .then(data => { tipoCambioActual = data.rates.PEN; })
+        .catch(err => console.log("Usando tipo de cambio por defecto"));
+
+    // Lógica para mostrar/ocultar y llenar Categorías
+    document.getElementById('tipo').addEventListener('change', function() {
+        const catSelect = document.getElementById('categoria');
+        const groupCat = document.getElementById('groupCategoria');
+        catSelect.innerHTML = '<option value="">Selecciona...</option>';
+        
+        if (this.value === 'Gasto') {
+            categoriasGastos.forEach(c => catSelect.innerHTML += `<option value="${c}">${c}</option>`);
+            groupCat.classList.remove('hidden');
+        } else if (this.value === 'Ingreso') {
+            categoriasIngresos.forEach(c => catSelect.innerHTML += `<option value="${c}">${c}</option>`);
+            groupCat.classList.remove('hidden');
+        } else {
+            groupCat.classList.add('hidden');
+            catSelect.removeAttribute('required');
+        }
+    });
+
+    // Lógica para mostrar/ocultar Bancos
+    document.getElementById('metodo').addEventListener('change', function() {
+        const groupBanco = document.getElementById('groupBanco');
+        const bancoSelect = document.getElementById('banco');
+        if (this.value === 'Tarjeta de crédito' || this.value === 'Tarjeta de débito') {
+            groupBanco.classList.remove('hidden');
+            bancoSelect.setAttribute('required', 'required');
+        } else {
+            groupBanco.classList.add('hidden');
+            bancoSelect.removeAttribute('required');
+            bancoSelect.value = "";
+        }
+    });
+
+    // Lógica para calcular la conversión a Soles en vivo
+    function actualizarConversion() {
+        const moneda = document.getElementById('moneda').value;
+        const monto = parseFloat(document.getElementById('monto').value);
+        const box = document.getElementById('conversionBox');
+        
+        if (moneda === 'USD' && monto > 0 && !isNaN(monto)) {
+            const soles = (monto * tipoCambioActual).toFixed(2);
+            box.innerText = `Equivale a aprox. S/ ${soles}`;
+            box.classList.remove('hidden');
+        } else {
+            box.classList.add('hidden');
+        }
+    }
+    
+    document.getElementById('moneda').addEventListener('change', actualizarConversion);
+    document.getElementById('monto').addEventListener('input', actualizarConversion);
+
+    // Lógica para Enviar el formulario a Google Sheets
+    document.getElementById('finanzasForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const btnSubmit = document.getElementById('btnSubmit');
+        btnSubmit.disabled = true;
+        btnSubmit.innerText = 'Guardando...';
+
+        const payload = {
+            fecha: document.getElementById('fecha').value,
+            tipo: document.getElementById('tipo').value,
+            categoria: document.getElementById('categoria').value,
+            descripcion: document.getElementById('descripcion').value,
+            monto: document.getElementById('monto').value,
+            moneda: document.getElementById('moneda').value,
+            metodo: document.getElementById('metodo').value,
+            banco: document.getElementById('banco').value,
+            observacion: document.getElementById('observacion').value
+        };
+
+        // Enviar datos usando modo 'no-cors' para evitar bloqueos del navegador
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(() => {
+            // El formulario se resetea automáticamente a la pantalla inicial
+            document.getElementById('finanzasForm').reset();
+            document.getElementById('fecha').valueAsDate = new Date();
+            document.getElementById('groupCategoria').classList.add('hidden');
+            document.getElementById('groupBanco').classList.add('hidden');
+            document.getElementById('conversionBox').classList.add('hidden');
+            
+            btnSubmit.innerText = '¡Guardado!';
+            setTimeout(() => {
+                btnSubmit.disabled = false;
+                btnSubmit.innerText = 'Registrar Operación';
+            }, 2000);
+        })
+        .catch(error => {
+            alert('Hubo un error al guardar. Revisa tu conexión.');
+            btnSubmit.disabled = false;
+            btnSubmit.innerText = 'Registrar Operación';
+        });
+    });
+</script>
+
+</body>
+</html>
